@@ -1,61 +1,89 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { apiService } from '../services/api';
+import type { Page } from '../db/schema';
 
-interface Page {
-  id: string;
-  title: string;
-  slug: string;
-  description: string;
-  h1: string;
-  content: string;
-  status: 'draft' | 'published' | 'archived';
-  author: string;
-  createdDate: string;
-  lastModified: string;
-  views: number;
-  url: string;
-}
 
 interface PageRendererProps {
-  page: Page;
+  page: {
+    id: string;
+    title: string;
+    h1?: string;
+    description?: string;
+    content?: string;
+    createdDate: string;
+    lastModified: string;
+    views: number;
+    author: string;
+    status: string;
+  };
 }
 
-const PageRenderer: React.FC<PageRendererProps> = ({ page }) => {
-  // Update view count when page is viewed
-  React.useEffect(() => {
-    const updateViewCount = () => {
-      const createdPages = JSON.parse(localStorage.getItem('createdPages') || '[]');
-      const updatedPages = createdPages.map((p: Page) => 
-        p.id === page.id ? { ...p, views: p.views + 1 } : p
-      );
-      localStorage.setItem('createdPages', JSON.stringify(updatedPages));
+export default function PageRenderer({ page }: PageRendererProps) {
+  const [processedContent, setProcessedContent] = useState('');
+  const [variables, setVariables] = useState<Record<string, string>>({});
+
+  // Load dynamic variables
+  useEffect(() => {
+    const savedVariables = localStorage.getItem('dynamicVariables');
+    if (savedVariables) {
+      setVariables(JSON.parse(savedVariables));
+    }
+  }, []);
+
+  // Process content and replace variables
+  useEffect(() => {
+    if (page.content) {
+      let content = page.content;
+      
+      // Replace dynamic variables
+      Object.entries(variables).forEach(([key, value]) => {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        content = content.replace(regex, value);
+      });
+      
+      // Replace default variables
+      const defaultVariables = {
+        company_name: 'Prince2Cert',
+        category_name: 'Prince2',
+        country: 'United States',
+        city: 'New York',
+        currency: '$',
+        price: '2,499',
+        course_count: '25+'
+      };
+      
+      Object.entries(defaultVariables).forEach(([key, value]) => {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        content = content.replace(regex, value);
+      });
+      
+      setProcessedContent(content);
+    }
+  }, [page.content, variables]);
+
+  // Increment view count when page is viewed
+  useEffect(() => {
+    const incrementViewCount = async () => {
+      try {
+        // Try to increment view count via API
+        await apiService.getPage(page.id);
+      } catch (error) {
+        console.warn('Failed to increment view count via API, using localStorage fallback');
+        // Fallback to localStorage
+        const createdPages = JSON.parse(localStorage.getItem('createdPages') || '[]');
+        const updatedPages = createdPages.map((p: any) => 
+          p.id === page.id ? { ...p, views: (p.views || 0) + 1 } : p
+        );
+        localStorage.setItem('createdPages', JSON.stringify(updatedPages));
+      }
     };
-
-    updateViewCount();
+    
+    incrementViewCount();
   }, [page.id]);
-
-  // Function to replace variables with actual values (basic implementation)
-  const replaceVariables = (content: string) => {
-    // Get domain settings for variable replacement
-    const domainSettings = JSON.parse(localStorage.getItem('domainSettings') || '{"primaryDomain": "example.com"}');
-    const siteSettings = JSON.parse(localStorage.getItem('siteSettings') || '{"siteName": "Prince2Cert"}');
-    
-    let replacedContent = content;
-    
-    // Replace common variables
-    replacedContent = replacedContent.replace(/\{\{company_name\}\}/g, siteSettings.siteName || 'Prince2Cert');
-    replacedContent = replacedContent.replace(/\{\{category_name\}\}/g, 'Prince2');
-    replacedContent = replacedContent.replace(/\{\{country\}\}/g, 'United States');
-    replacedContent = replacedContent.replace(/\{\{city\}\}/g, 'New York');
-    replacedContent = replacedContent.replace(/\{\{currency\}\}/g, '$');
-    replacedContent = replacedContent.replace(/\{\{price\}\}/g, '2,499');
-    replacedContent = replacedContent.replace(/\{\{course_count\}\}/g, '25+');
-    
-    return replacedContent;
-  };
 
   // Convert content to HTML (basic markdown-like conversion)
   const convertToHTML = (content: string) => {
-    let html = replaceVariables(content);
+    let html = content;
     
     // Convert markdown-style formatting to HTML
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -77,30 +105,30 @@ const PageRenderer: React.FC<PageRendererProps> = ({ page }) => {
   return (
     <div className="min-h-screen bg-white">
       {/* SEO Meta Tags would go here in a real implementation */}
-      <title>{replaceVariables(page.title)}</title>
+      <title>{page.title}</title>
       
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Page Header */}
         {page.h1 && (
           <header className="mb-8">
             <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">
-              {replaceVariables(page.h1)}
+              {page.h1}
             </h1>
             {page.description && (
               <p className="text-xl text-gray-600 leading-relaxed">
-                {replaceVariables(page.description)}
+                {page.description}
               </p>
             )}
           </header>
         )}
         
         {/* Page Content */}
-        {page.content && (
+        {processedContent && (
           <main className="prose prose-lg max-w-none">
             <div 
               className="text-gray-800 leading-relaxed"
               dangerouslySetInnerHTML={{
-                __html: convertToHTML(page.content)
+                __html: convertToHTML(processedContent)
               }}
             />
           </main>
@@ -118,12 +146,11 @@ const PageRenderer: React.FC<PageRendererProps> = ({ page }) => {
             <div className="flex items-center space-x-4">
               <span>Views: {page.views}</span>
               <span>Author: {page.author}</span>
+              <span>Status: {page.status}</span>
             </div>
           </div>
         </footer>
       </div>
     </div>
   );
-};
-
-export default PageRenderer;
+}

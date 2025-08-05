@@ -1,182 +1,243 @@
-import React, { useState } from 'react';
-import { Save, Eye, FileText, Type, AlignLeft, Bold, Italic, Underline, List, Link, Image } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Edit, Trash2, Eye, Globe, Save, X } from 'lucide-react';
+import { apiService } from '../services/api';
 
-const CreatePagesManagement: React.FC = () => {
-  const [domainSettings, setDomainSettings] = useState({ primaryDomain: 'example.com' });
-  
-  const [pageData, setPageData] = useState({
+interface Page {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  h1: string;
+  content: string;
+  status: 'draft' | 'published';
+  author: string;
+  createdDate: string;
+  lastModified: string;
+  views: number;
+  url: string;
+}
+
+export default function CreatePagesManagement() {
+  const [pages, setPages] = useState<Page[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newPage, setNewPage] = useState<Omit<Page, 'id' | 'createdDate' | 'lastModified' | 'views' | 'url'>>({
     title: '',
     slug: '',
     description: '',
     h1: '',
-    content: ''
+    content: '',
+    status: 'draft',
+    author: 'Current User'
   });
 
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
-
-  // Load domain settings and listen for updates
-  React.useEffect(() => {
-    const loadDomainSettings = () => {
-      const saved = localStorage.getItem('domainSettings');
-      if (saved) {
-        setDomainSettings(JSON.parse(saved));
+  // Load pages from storage
+  const loadPages = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await apiService.getPages();
+      
+      if (response.success && response.data) {
+        // Convert API response to match expected format
+        const formattedPages = response.data.map((page: any) => ({
+          id: page.id,
+          title: page.title,
+          slug: page.slug,
+          description: page.description || '',
+          h1: page.h1 || '',
+          content: page.content || '',
+          status: page.status as 'draft' | 'published',
+          author: page.author || 'Unknown',
+          createdDate: page.createdAt || new Date().toISOString(),
+          lastModified: page.updatedAt || new Date().toISOString(),
+          views: page.views || 0,
+          url: page.url || `/${page.slug}`
+        }));
+        
+        setPages(formattedPages);
+      } else {
+        // Fallback to localStorage if API fails
+        console.warn('API failed, falling back to localStorage:', response.error);
+        const localPages = JSON.parse(localStorage.getItem('createdPages') || '[]');
+        setPages(localPages);
+        setError('Using offline data - some features may be limited');
       }
+    } catch (error: any) {
+      console.error('Failed to load pages:', error);
+      // Fallback to localStorage
+      const localPages = JSON.parse(localStorage.getItem('createdPages') || '[]');
+      setPages(localPages);
+      setError('Failed to connect to server - using offline data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPages();
+
+    // Listen for page creation events from other components
+    const handlePageCreated = (event: CustomEvent) => {
+      loadPages(); // Reload pages when a new page is created
     };
 
-    loadDomainSettings();
-
-    const handleSettingsUpdate = (event: CustomEvent) => {
-      setDomainSettings(event.detail.domainSettings);
-    };
-
-    window.addEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
+    window.addEventListener('pageCreated', handlePageCreated as EventListener);
 
     return () => {
-      window.removeEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
+      window.removeEventListener('pageCreated', handlePageCreated as EventListener);
     };
   }, []);
 
-  const handleInputChange = (field: string, value: string) => {
-    setPageData(prev => ({
+  const handleInputChange = (field: keyof typeof newPage, value: string) => {
+    setNewPage(prev => ({
       ...prev,
       [field]: value
     }));
-  };
 
-  const handleSave = () => {
-    // Get domain settings from localStorage
-    const domainSettings = JSON.parse(localStorage.getItem('domainSettings') || '{"primaryDomain": "example.com"}');
-    
-    // Generate a unique ID for the page
-    const pageId = `page-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Create the page object
-    const newPage = {
-      id: pageId,
-      title: pageData.title || 'Untitled Page',
-      slug: pageData.slug || 'untitled-page',
-      description: pageData.description || '',
-      h1: pageData.h1 || '',
-      content: pageData.content || '',
-      status: 'draft' as const,
-      author: 'Current User', // In a real app, this would come from authentication
-      createdDate: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      views: 0,
-      url: `https://${domainSettings.primaryDomain}/${pageData.slug || 'untitled-page'}`
-    };
-    
-    // Get existing pages from localStorage
-    const existingPages = JSON.parse(localStorage.getItem('createdPages') || '[]');
-    
-    // Add the new page
-    const updatedPages = [...existingPages, newPage];
-    
-    // Save to localStorage
-    localStorage.setItem('createdPages', JSON.stringify(updatedPages));
-    
-    // Dispatch event to notify other components
-    window.dispatchEvent(new CustomEvent('pageCreated', { detail: newPage }));
-    
-    // Show success message
-    alert('Page saved successfully!');
-    
-    // Reset the form
-    setPageData({
-      title: '',
-      slug: '',
-      description: '',
-      h1: '',
-      content: ''
-    });
-  };
-
-  const togglePreview = () => {
-    setIsPreviewMode(!isPreviewMode);
-  };
-
-  const insertFormatting = (format: string) => {
-    const textarea = document.getElementById('content-editor') as HTMLTextAreaElement;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-    
-    let formattedText = '';
-    switch (format) {
-      case 'bold':
-        formattedText = `**${selectedText || 'bold text'}**`;
-        break;
-      case 'italic':
-        formattedText = `*${selectedText || 'italic text'}*`;
-        break;
-      case 'underline':
-        formattedText = `<u>${selectedText || 'underlined text'}</u>`;
-        break;
-      case 'list':
-        formattedText = `\n- ${selectedText || 'list item'}\n- list item 2\n- list item 3`;
-        break;
-      case 'link':
-        formattedText = `[${selectedText || 'link text'}](https://example.com)`;
-        break;
-      case 'image':
-        formattedText = `![${selectedText || 'alt text'}](https://example.com/image.jpg)`;
-        break;
-      default:
-        formattedText = selectedText;
+    // Auto-generate slug from title
+    if (field === 'title') {
+      const slug = value
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      setNewPage(prev => ({
+        ...prev,
+        slug
+      }));
     }
-
-    const newContent = 
-      textarea.value.substring(0, start) + 
-      formattedText + 
-      textarea.value.substring(end);
-    
-    handleInputChange('content', newContent);
-    
-    // Restore focus and selection
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start, start + formattedText.length);
-    }, 0);
   };
 
-  const renderPreview = () => {
-    return (
-      <div className="bg-white rounded-lg border border-gray-200 p-8">
-        <div className="max-w-4xl mx-auto">
-          {pageData.h1 && (
-            <h1 className="text-4xl font-bold text-gray-900 mb-6">
-              {pageData.h1}
-            </h1>
-          )}
+  const handleSave = async () => {
+    if (newPage.title && newPage.slug) {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const response = await apiService.createPage({
+          title: newPage.title,
+          slug: newPage.slug,
+          description: newPage.description,
+          h1: newPage.h1,
+          content: newPage.content,
+          status: newPage.status,
+          author: newPage.author
+        });
+        
+        if (response.success && response.data) {
+          // Add new page to local state
+          const formattedPage: Page = {
+            id: response.data.id,
+            title: response.data.title,
+            slug: response.data.slug,
+            description: response.data.description || '',
+            h1: response.data.h1 || '',
+            content: response.data.content || '',
+            status: response.data.status as 'draft' | 'published',
+            author: response.data.author || 'Unknown',
+            createdDate: response.data.createdAt || new Date().toISOString(),
+            lastModified: response.data.updatedAt || new Date().toISOString(),
+            views: response.data.views || 0,
+            url: response.data.url || `/${response.data.slug}`
+          };
           
-          {pageData.description && (
-            <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-              {pageData.description}
-            </p>
-          )}
+          setPages([formattedPage, ...pages]);
           
-          {pageData.content && (
-            <div className="prose prose-lg max-w-none">
-              <div 
-                className="text-gray-800 leading-relaxed"
-                dangerouslySetInnerHTML={{
-                  __html: pageData.content
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="text-blue-600 hover:text-blue-800 underline">$1</a>')
-                    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="max-w-full h-auto rounded-lg my-4" />')
-                    .replace(/^- (.+)$/gm, '<li>$1</li>')
-                    .replace(/(<li>.*<\/li>)/s, '<ul class="list-disc pl-6 my-4">$1</ul>')
-                    .replace(/\n/g, '<br />')
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    );
+          // Also save to localStorage as backup
+          const updatedPages = [formattedPage, ...pages];
+          localStorage.setItem('createdPages', JSON.stringify(updatedPages));
+          
+          // Reset form
+          setIsCreating(false);
+          setNewPage({
+            title: '',
+            slug: '',
+            description: '',
+            h1: '',
+            content: '',
+            status: 'draft',
+            author: 'Current User'
+          });
+        } else {
+          setError(response.error || 'Failed to create page');
+        }
+      } catch (error: any) {
+        console.error('Failed to create page:', error);
+        setError('Failed to create page - please try again');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to delete this page?')) {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const response = await apiService.deletePage(id);
+        
+        if (response.success) {
+          const updatedPages = pages.filter(page => page.id !== id);
+          setPages(updatedPages);
+          
+          // Also update localStorage
+          localStorage.setItem('createdPages', JSON.stringify(updatedPages));
+        } else {
+          setError(response.error || 'Failed to delete page');
+        }
+      } catch (error: any) {
+        console.error('Failed to delete page:', error);
+        setError('Failed to delete page - please try again');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleStatusChange = async (id: string, newStatus: 'draft' | 'published') => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await apiService.updatePage(id, { status: newStatus });
+      
+      if (response.success && response.data) {
+        const updatedPages = pages.map(page => 
+          page.id === id ? { 
+            ...page, 
+            status: newStatus, 
+            lastModified: response.data.updatedAt || new Date().toISOString() 
+          } : page
+        );
+        setPages(updatedPages);
+        
+        // Also update localStorage
+        localStorage.setItem('createdPages', JSON.stringify(updatedPages));
+      } else {
+        setError(response.error || 'Failed to update page status');
+      }
+    } catch (error: any) {
+      console.error('Failed to update page status:', error);
+      setError('Failed to update page status - please try again');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   return (
@@ -184,218 +245,247 @@ const CreatePagesManagement: React.FC = () => {
       <div className="p-8">
         <div className="flex justify-between items-start mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create New Page</h1>
-            <p className="text-gray-600">Create a new page with custom content</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Pages Management</h1>
+            <p className="text-gray-600">Create and manage your website pages</p>
+            {error && (
+              <div className="mt-2 p-2 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded text-sm">
+                {error}
+              </div>
+            )}
           </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={togglePreview}
-              className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors ${
-                isPreviewMode 
-                  ? 'bg-gray-600 text-white hover:bg-gray-700' 
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              <Eye className="w-4 h-4" />
-              <span>{isPreviewMode ? 'Edit' : 'Preview'}</span>
-            </button>
-            <button
-              onClick={handleSave}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-            >
-              <Save className="w-4 h-4" />
-              <span>Save Page</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setIsCreating(true)}
+            disabled={isLoading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{isLoading ? 'Loading...' : 'Create New Page'}</span>
+          </button>
         </div>
 
-        {isPreviewMode ? (
-          <div>
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">Page Preview</h2>
-              <p className="text-sm text-gray-600">This is how your page will look when published</p>
+        {isCreating && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">Create New Page</h2>
+              <button
+                onClick={() => setIsCreating(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            {renderPreview()}
-          </div>
-        ) : (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-lg border border-gray-200 p-8">
-              <div className="space-y-6">
-                {/* Page Title */}
-                <div>
-                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                    <FileText className="w-4 h-4 mr-2" />
-                    Page Title
-                  </label>
-                  <input
-                    type="text"
-                    value={pageData.title}
-                    onChange={(e) => handleInputChange('title', e.target.value)}
-                    placeholder="Enter page title (for SEO and browser tab)"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">This will appear in the browser tab and search results</p>
-                </div>
 
-                {/* Page Slug */}
-                <div>
-                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                    <FileText className="w-4 h-4 mr-2" />
-                    Page Slug (URL)
-                  </label>
-                  <div className="flex items-center">
-                    <span className="text-sm text-gray-500 bg-gray-50 px-3 py-3 border border-r-0 border-gray-300 rounded-l-lg">
-                      https://{domainSettings.primaryDomain}/
-                    </span>
-                    <input
-                      type="text"
-                      value={pageData.slug}
-                      onChange={(e) => {
-                        // Auto-format slug: lowercase, replace spaces with hyphens, remove special chars
-                        const formattedSlug = e.target.value
-                          .toLowerCase()
-                          .replace(/[^a-z0-9\s-]/g, '')
-                          .replace(/\s+/g, '-')
-                          .replace(/-+/g, '-');
-                        handleInputChange('slug', formattedSlug);
-                      }}
-                      placeholder="my-page-url"
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    URL-friendly version of your page title. Only lowercase letters, numbers, and hyphens allowed.
-                  </p>
-                </div>
-
-                {/* Page Description */}
-                <div>
-                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                    <AlignLeft className="w-4 h-4 mr-2" />
-                    Page Description
-                  </label>
-                  <textarea
-                    value={pageData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    placeholder="Enter a brief description of the page content"
-                    rows={3}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">This will appear as a subtitle or meta description</p>
-                </div>
-
-                {/* H1 Heading */}
-                <div>
-                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                    <Type className="w-4 h-4 mr-2" />
-                    Main Heading (H1)
-                  </label>
-                  <input
-                    type="text"
-                    value={pageData.h1}
-                    onChange={(e) => handleInputChange('h1', e.target.value)}
-                    placeholder="Enter the main heading for your page"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-xl font-semibold"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">This is the main heading that visitors will see</p>
-                </div>
-
-                {/* Rich Text Editor */}
-                <div>
-                  <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                    <AlignLeft className="w-4 h-4 mr-2" />
-                    Page Content
-                  </label>
-                  
-                  {/* Formatting Toolbar */}
-                  <div className="border border-gray-300 rounded-t-lg bg-gray-50 p-3 flex items-center space-x-2">
-                    <button
-                      onClick={() => insertFormatting('bold')}
-                      className="p-2 hover:bg-gray-200 rounded transition-colors"
-                      title="Bold"
-                    >
-                      <Bold className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => insertFormatting('italic')}
-                      className="p-2 hover:bg-gray-200 rounded transition-colors"
-                      title="Italic"
-                    >
-                      <Italic className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => insertFormatting('underline')}
-                      className="p-2 hover:bg-gray-200 rounded transition-colors"
-                      title="Underline"
-                    >
-                      <Underline className="w-4 h-4" />
-                    </button>
-                    <div className="w-px h-6 bg-gray-300"></div>
-                    <button
-                      onClick={() => insertFormatting('list')}
-                      className="p-2 hover:bg-gray-200 rounded transition-colors"
-                      title="Bullet List"
-                    >
-                      <List className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => insertFormatting('link')}
-                      className="p-2 hover:bg-gray-200 rounded transition-colors"
-                      title="Insert Link"
-                    >
-                      <Link className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => insertFormatting('image')}
-                      className="p-2 hover:bg-gray-200 rounded transition-colors"
-                      title="Insert Image"
-                    >
-                      <Image className="w-4 h-4" />
-                    </button>
-                  </div>
-                  
-                  <textarea
-                    id="content-editor"
-                    value={pageData.content}
-                    onChange={(e) => handleInputChange('content', e.target.value)}
-                    placeholder="Write your page content here. You can use the formatting buttons above or type markdown-style formatting:
-
-**Bold text**
-*Italic text*
-[Link text](https://example.com)
-![Image alt text](https://example.com/image.jpg)
-- Bullet point 1
-- Bullet point 2"
-                    rows={15}
-                    className="w-full px-4 py-3 border-l border-r border-b border-gray-300 rounded-b-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono text-sm"
-                  />
-                  <div className="flex justify-between items-center mt-2">
-                    <p className="text-xs text-gray-500">
-                      Use the toolbar buttons or type markdown formatting directly
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {pageData.content.length} characters
-                    </p>
-                  </div>
-                </div>
-
-                {/* Quick Tips */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h3 className="text-sm font-semibold text-blue-900 mb-2">Formatting Tips:</h3>
-                  <div className="text-xs text-blue-800 space-y-1">
-                    <p>• Use **text** for bold, *text* for italic</p>
-                    <p>• Create links with [link text](URL)</p>
-                    <p>• Add images with ![alt text](image URL)</p>
-                    <p>• Start lines with - for bullet points</p>
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Page Title
+                </label>
+                <input
+                  type="text"
+                  value={newPage.title}
+                  onChange={(e) => handleInputChange('title', e.target.value)}
+                  placeholder="Enter page title"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  URL Slug
+                </label>
+                <input
+                  type="text"
+                  value={newPage.slug}
+                  onChange={(e) => handleInputChange('slug', e.target.value)}
+                  placeholder="page-url-slug"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  value={newPage.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  placeholder="Brief description of the page"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Main Heading (H1)
+                </label>
+                <input
+                  type="text"
+                  value={newPage.h1}
+                  onChange={(e) => handleInputChange('h1', e.target.value)}
+                  placeholder="Main heading for the page"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Content
+                </label>
+                <textarea
+                  value={newPage.content}
+                  onChange={(e) => handleInputChange('content', e.target.value)}
+                  placeholder="Page content (supports HTML and markdown)"
+                  rows={8}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Status
+                </label>
+                <select
+                  value={newPage.status}
+                  onChange={(e) => handleInputChange('status', e.target.value as 'draft' | 'published')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="draft">Draft</option>
+                  <option value="published">Published</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Author
+                </label>
+                <input
+                  type="text"
+                  value={newPage.author}
+                  onChange={(e) => handleInputChange('author', e.target.value)}
+                  placeholder="Author name"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setIsCreating(false)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!newPage.title || !newPage.slug}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg flex items-center space-x-2 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isLoading ? 'Saving...' : 'Save Page'}</span>
+              </button>
             </div>
           </div>
         )}
+
+        {/* Pages List */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">All Pages ({pages.length})</h2>
+            {isLoading && (
+              <div className="mt-2 text-sm text-blue-600">Loading pages...</div>
+            )}
+          </div>
+
+          {pages.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Globe className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No pages created yet</h3>
+              <p className="text-gray-600 mb-6">Get started by creating your first page</p>
+              <button
+                onClick={() => setIsCreating(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 mx-auto transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Your First Page</span>
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {pages.map((page) => (
+                <div key={page.id} className="p-6 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h3 className="text-lg font-medium text-gray-900">{page.title}</h3>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          page.status === 'published' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {page.status}
+                        </span>
+                      </div>
+                      
+                      {page.description && (
+                        <p className="text-gray-600 mb-2">{page.description}</p>
+                      )}
+                      
+                      <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <span>/{page.slug}</span>
+                        <span>•</span>
+                        <span>By {page.author}</span>
+                        <span>•</span>
+                        <span>Created {formatDate(page.createdDate)}</span>
+                        <span>•</span>
+                        <span>{page.views} views</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 ml-4">
+                      <select
+                        value={page.status}
+                        onChange={(e) => handleStatusChange(page.id, e.target.value as 'draft' | 'published')}
+                        disabled={isLoading}
+                        className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="published">Published</option>
+                      </select>
+                      
+                      <button
+                        onClick={() => window.open(page.url, '_blank')}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        title="Preview page"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      
+                      <button
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        title="Edit page"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      
+                      <button
+                        onClick={() => handleDelete(page.id)}
+                        disabled={isLoading}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                        title="Delete page"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
-};
-
-export default CreatePagesManagement;
+}

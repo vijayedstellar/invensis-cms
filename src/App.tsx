@@ -40,12 +40,12 @@ function App() {
     }
     
     // Simple routing based on URL path
-    const path = window.location.pathname;
+    const path = window.location.pathname || '/';
     setCurrentRoute(path);
     
     // Listen for URL changes
     const handlePopState = () => {
-      setCurrentRoute(window.location.pathname);
+      setCurrentRoute(window.location.pathname || '/');
     };
     
     window.addEventListener('popstate', handlePopState);
@@ -54,17 +54,24 @@ function App() {
 
   // Check if current route matches a created page
   const getCreatedPage = () => {
+    const currentPath = (currentRoute || '/').toLowerCase();
     const createdPages = JSON.parse(localStorage.getItem('createdPages') || '[]');
-    const currentPath = currentRoute.toLowerCase();
-    
-    // Try to find a page that matches the current path
     return createdPages.find((page: any) => {
       const pageSlug = `/${page.slug}`;
       return pageSlug === currentPath || pageSlug === currentPath.replace(/\/$/, '');
     });
   };
 
-  const matchedPage = getCreatedPage();
+  const [matchedPage, setMatchedPage] = useState<any>(null);
+
+  // Handle page lookup
+  React.useEffect(() => {
+    if (currentRoute && currentRoute !== '/' && !currentRoute.startsWith('/admin')) {
+      setMatchedPage(getCreatedPage());
+    } else {
+      setMatchedPage(null);
+    }
+  }, [currentRoute]);
 
   // Handle different routes
   if (currentRoute === '/') {
