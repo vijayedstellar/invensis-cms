@@ -1,5 +1,5 @@
 import React from 'react';
-import { GraduationCap, BarChart3, FileText, Package, Globe, Code } from 'lucide-react';
+import { GraduationCap, BarChart3, FileText, Package, Globe, Code, PlusCircle, Settings } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
@@ -50,12 +50,21 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange }) => {
           </div>
           <div 
             className={`flex items-center space-x-3 px-3 py-2 rounded-lg cursor-pointer ${
+              activeView === 'create-pages' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+            onClick={() => onViewChange('create-pages')}
+          >
+            <PlusCircle className="w-5 h-5" />
+            <span>Create Pages</span>
+          </div>
+          <div 
+            className={`flex items-center space-x-3 px-3 py-2 rounded-lg cursor-pointer ${
               activeView === 'pages' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'
             }`}
             onClick={() => onViewChange('pages')}
           >
             <Globe className="w-5 h-5" />
-            <span>Pages</span>
+            <span>Manage Pages</span>
           </div>
           <div 
             className={`flex items-center space-x-3 px-3 py-2 rounded-lg cursor-pointer ${
@@ -65,6 +74,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange }) => {
           >
             <Code className="w-5 h-5" />
             <span>Dynamic Variables</span>
+          </div>
+          <div 
+            className={`flex items-center space-x-3 px-3 py-2 rounded-lg cursor-pointer ${
+              activeView === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+            onClick={() => onViewChange('settings')}
+          >
+            <Settings className="w-5 h-5" />
+            <span>Settings</span>
           </div>
         </nav>
       </div>
