@@ -3,7 +3,7 @@ import { getDatabase, initializeDatabase, handleDatabaseError, testConnection } 
 import { siteSettings } from '../lib/schema';
 import { eq } from 'drizzle-orm';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   // Set CORS headers first
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
