@@ -1,8 +1,16 @@
 {
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "@vercel/node@3"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "env": {
+    "DATABASE_URL": "@database_url"
+  }
 }

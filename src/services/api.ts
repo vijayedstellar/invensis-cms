@@ -1,8 +1,6 @@
 // API service for making HTTP requests to backend
 
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '' // Use relative URLs in production (same domain)
-  : 'http://localhost:3000'; // Use localhost in development
+const API_BASE_URL = ''; // Always use relative URLs for Vercel deployment
 
 interface ApiResponse<T> {
   success: boolean;
@@ -20,6 +18,12 @@ class ApiService {
     try {
       const url = `${API_BASE_URL}/api${endpoint}`;
       
+      console.log('Making API request:', {
+        method: options.method || 'GET',
+        url: url,
+        hasBody: !!options.body
+      });
+      
       const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
@@ -28,15 +32,28 @@ class ApiService {
         ...options,
       });
 
+      console.log('API response status:', response.status, response.statusText);
+
       const data = await response.json();
+      
+      console.log('API response data:', {
+        success: data.success,
+        hasData: !!data.data,
+        error: data.error
+      });
 
       if (!response.ok) {
-        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        console.error('API request failed:', {
+          status: response.status,
+          error: data.error,
+          details: data.details
+        });
+        throw new Error(data.error || data.details || `HTTP error! status: ${response.status}`);
       }
 
       return data;
     } catch (error: any) {
-      console.error('API request failed:', error);
+      console.error('API request error:', error);
       return {
         success: false,
         error: error.message || 'Network error occurred'
